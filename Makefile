@@ -703,7 +703,9 @@ endif
 export LLVM_AR LLVM_NM
 
 # Set O3 optimization level for LTO
+LDFLAGS         += -O3
 LDFLAGS		+= --plugin-opt=O3
+LDFLAGS		+= --lto-O3
 
 endif
 
@@ -727,15 +729,17 @@ KBUILD_CFLAGS   += -Os
 else
 KBUILD_CFLAGS   += -O3
 ifeq ($(cc-name),gcc)
-KBUILD_CFLAGS	+= -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55
+KBUILD_CFLAGS	+= -mcpu=cortex-a76.cortex-a55+crypto -mtune=cortex-a76.cortex-a55
 endif
 ifeq ($(cc-name),clang)
-KBUILD_CFLAGS	+= -mcpu=cortex-a55 -mtune=cortex-a55
-
-ifdef CONFIG_LTO_CLANG
-KBUILD_CFLAG	+= -fwhole-program-vtables
+#Enable fast FMA optimizations
+KBUILD_CFLAGS	+= -ffp-contract=fast
+#Enable MLGO for register allocation.
+KBUILD_CFLAGS	+= -mllvm -regalloc-enable-advisor=release
+#Enable hot cold split optimization
+KBUILD_CFLAGS	+= -mllvm -hot-cold-split=true
+KBUILD_CFLAGS	+= -march=armv8.2-a+lse+fp16+dotprod -mcpu=cortex-a76+crypto+crc
 endif
-
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= -mllvm -polly \
 		   -mllvm -polly-run-inliner \
@@ -758,16 +762,7 @@ KBUILD_CFLAGS	+= -mllvm -polly \
 ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
 KBUILD_CFLAGS	+= -mllvm -polly-run-dce
 endif
-endif # CONFIG_LLVM_POLLY
-
-endif # $(cc-name),clang
-endif # CONFIG_CC_OPTIMIZE_FOR_SIZE
-
-ifdef CONFIG_INLINE_OPTIMIZATION
-KBUILD_CFLAGS	+= -mllvm -inline-threshold=2000
-KBUILD_CFLAGS	+= -mllvm -inlinehint-threshold=3000
-KBUILD_CFLAGS   += -mllvm -unroll-threshold=1200
-KBUILD_LDFLAGS  += --plugin-opt=-import-instr-limit=40
+endif
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
@@ -844,6 +839,7 @@ KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
 
 ifeq ($(ld-name),lld)
 LDFLAGS += --lto-O3
+LDFLAGS += -mllvm -regalloc-enable-advisor=release
 endif
 
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-const-variable)
@@ -943,9 +939,6 @@ else
 lto-clang-flags	:= -flto
 endif
 lto-clang-flags += -fvisibility=default $(call cc-option, -fsplit-lto-unit)
-
-# Limit inlining across translation units to reduce binary size
-LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
 
 KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
 KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
@@ -2014,3 +2007,5 @@ FORCE:
 # Declare the contents of the .PHONY variable as phony.  We keep that
 # information in a variable so we can use it in if_changed and friends.
 .PHONY: $(PHONY)
+
+KBUILD_CFLAGS += -w
